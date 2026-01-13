@@ -12,26 +12,28 @@ export const triggerDemoCall = aw(async (req: Request, res: Response) => {
 
     // Validation
     if (!name || !phone) {
-        return errorResponse(res, {
+        errorResponse(res, {
             message: "Name and phone are required",
             statusCode: 400,
         });
+        return;
     }
 
     // Validate phone format (basic validation)
     const phoneRegex =
-        /^[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,9}$/;
+        /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
     if (!phoneRegex.test(phone.replace(/\s/g, ""))) {
-        return errorResponse(res, {
+        errorResponse(res, {
             message: "Invalid phone number format",
             statusCode: 400,
         });
+        return;
     }
 
     try {
         const result = await triggerVerificationCall(name, phone);
 
-        return successResponse(res, {
+        successResponse(res, {
             message:
                 "Call initiated successfully. AI agent will verify name and phone number.",
             data: {
@@ -43,7 +45,7 @@ export const triggerDemoCall = aw(async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error("❌ Error triggering demo call:", error);
-        return errorResponse(res, {
+        errorResponse(res, {
             message:
                 error instanceof Error
                     ? error.message

@@ -12,7 +12,8 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
         const data = req.body?.data;
 
         if (!event || !data?.call_id) {
-            return res.status(400).json({ message: "Invalid webhook payload" });
+            res.status(400).json({ message: "Invalid webhook payload" });
+            return;
         }
 
         const callId = data.call_id;
@@ -58,7 +59,8 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             // If call was hung up, still return OK but log it
             if (wasHungUp) {
                 console.log("✅ Call hung up due to verification failure");
-                return res.status(200).json({ msg: "OK", action: "call_hung_up" });
+                res.status(200).json({ msg: "OK", action: "call_hung_up" });
+                return;
             }
         }
 
@@ -81,9 +83,9 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             transcript: data.transcript?.substring(0, 100) + "...",
         });
 
-        return res.status(200).json({ msg: "OK" });
+        res.status(200).json({ msg: "OK" });
     } catch (err) {
         console.error("❌ Retell Webhook Error:", err);
-        return res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ message: "Internal server error" });
     }
 });

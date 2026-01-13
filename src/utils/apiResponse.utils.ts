@@ -2,14 +2,14 @@ import { Response } from "express";
 
 interface SuccessResponse {
     message: string;
-    data?: any;
-    meta?: any;
+    data?: unknown;
+    meta?: unknown;
 }
 
 interface ErrorResponse {
     message: string;
     statusCode: number;
-    errors?: any;
+    errors?: unknown;
 }
 
 export const successResponse = (

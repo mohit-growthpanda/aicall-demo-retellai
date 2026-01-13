@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 // Health check endpoint
-app.get("/health", (req: Request, res: Response) => {
+app.get("/health", (_req: Request, res: Response) => {
     res.json({
         success: true,
         status: "healthy",
@@ -33,7 +33,7 @@ app.use("/api/demo", demoRoute);
 app.use("/api/call", CallAiData); // Webhook endpoint for Retell
 
 // 404 handler
-app.use((req: Request, res: Response) => {
+app.use((_req: Request, res: Response) => {
     res.status(404).json({
         success: false,
         message: "Route not found",
@@ -41,7 +41,7 @@ app.use((req: Request, res: Response) => {
 });
 
 // Error handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error("❌ Error:", err);
     res.status(500).json({
         success: false,

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { handleRetellWebhook } from "../controller/aiCallingWebhook.controller";
 
-const router = Router();
+const router: Router = Router();
 
 router.post("/retell/ai-wbh", handleRetellWebhook);
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { triggerDemoCall } from "../controller/demo.controller";
 
-const router = Router();
+const router: Router = Router();
 
 router.post("/trigger-call", triggerDemoCall);
 
