@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI Call Demo - Verification</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #ff8c42 0%, #ff6b35 100%);
+                min-height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+            }
+
+            .container {
+                background: #ff8c42;
+                border-radius: 20px;
+                padding: 40px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                max-width: 500px;
+                width: 100%;
+            }
+
+            h1 {
+                color: #fff;
+                text-align: center;
+                margin-bottom: 30px;
+                font-size: 28px;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+            }
+
+            .form-group {
+                margin-bottom: 25px;
+            }
+
+            label {
+                display: block;
+                color: #fff;
+                margin-bottom: 8px;
+                font-weight: 600;
+                font-size: 14px;
+            }
+
+            input {
+                width: 100%;
+                padding: 15px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                border-radius: 10px;
+                font-size: 16px;
+                background: rgba(255, 255, 255, 0.95);
+                transition: all 0.3s ease;
+            }
+
+            input:focus {
+                outline: none;
+                border-color: #fff;
+                background: #fff;
+                box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+            }
+
+            button {
+                width: 100%;
+                padding: 15px;
+                background: #fff;
+                color: #ff6b35;
+                border: none;
+                border-radius: 10px;
+                font-size: 18px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+
+            button:hover {
+                background: #f0f0f0;
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            }
+
+            button:active {
+                transform: translateY(0);
+            }
+
+            button:disabled {
+                background: #ccc;
+                color: #666;
+                cursor: not-allowed;
+                transform: none;
+            }
+
+            .status {
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 10px;
+                text-align: center;
+                font-weight: 600;
+                display: none;
+            }
+
+            .status.success {
+                background: #4caf50;
+                color: #fff;
+                display: block;
+            }
+
+            .status.error {
+                background: #f44336;
+                color: #fff;
+                display: block;
+            }
+
+            .status.info {
+                background: #2196f3;
+                color: #fff;
+                display: block;
+            }
+
+            .loading {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                border: 3px solid rgba(255, 255, 255, 0.3);
+                border-radius: 50%;
+                border-top-color: #fff;
+                animation: spin 1s ease-in-out infinite;
+                margin-right: 10px;
+            }
+
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>AI Call Demo</h1>
+            <form id="callForm">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        placeholder="Enter your name"
+                        required
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone</label>
+                    <input
+                        type="tel"
+                        id="phone"
+                        name="phone"
+                        placeholder="Enter your phone number"
+                        required
+                    />
+                </div>
+                <button type="submit" id="submitBtn">Submit</button>
+            </form>
+            <div id="status" class="status"></div>
+        </div>
+
+        <script>
+            const form = document.getElementById("callForm");
+            const submitBtn = document.getElementById("submitBtn");
+            const statusDiv = document.getElementById("status");
+
+            function showStatus(message, type) {
+                statusDiv.textContent = message;
+                statusDiv.className = `status ${type}`;
+                statusDiv.style.display = "block";
+            }
+
+            function hideStatus() {
+                statusDiv.style.display = "none";
+            }
+
+            form.addEventListener("submit", async (e) => {
+                e.preventDefault();
+
+                const name = document.getElementById("name").value.trim();
+                const phone = document.getElementById("phone").value.trim();
+
+                if (!name || !phone) {
+                    showStatus("Please fill in all fields", "error");
+                    return;
+                }
+
+                // Disable submit button
+                submitBtn.disabled = true;
+                submitBtn.innerHTML =
+                    '<span class="loading"></span>Initiating Call...';
+                hideStatus();
+
+                try {
+                    const response = await fetch("/api/demo/trigger-call", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ name, phone }),
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showStatus(
+                            `✅ Call initiated!`,
+                            "success"
+                        );
+                    } else {
+                        showStatus(
+                            `❌ Error: ${data.message || "Failed to initiate call"}`,
+                            "error"
+                        );
+                    }
+                } catch (error) {
+                    showStatus(`❌ Network error: ${error.message}`, "error");
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = "Submit";
+                }
+            });
+        </script>
+    </body>
+</html>
