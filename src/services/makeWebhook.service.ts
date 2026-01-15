@@ -24,7 +24,8 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
     const makeHookUrl = process.env.MAKE_HOOK_URL;
 
     if (!makeHookUrl) {
-        console.log("⚠️ MAKE_HOOK_URL not configured, skipping Make.com webhook");
+        console.log("⚠️ [SPREADSHEET STORAGE] DISABLED - MAKE_HOOK_URL not configured, skipping Make.com webhook");
+        console.log("⚠️ [SPREADSHEET STORAGE] Call data will NOT be stored in spreadsheet");
         return;
     }
 
@@ -67,6 +68,7 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
             analysis_summary: callData.call_analysis ? JSON.stringify(callData.call_analysis) : "",
         };
 
+        console.log("📊 [SPREADSHEET STORAGE] Attempting to store call data in spreadsheet...");
         console.log("📤 Sending data to Make.com webhook:", {
             call_id: spreadsheetData.call_id,
             event: spreadsheetData.event,
@@ -82,18 +84,28 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
             timeout: 10000, // 10 second timeout
         });
 
-        console.log("✅ Successfully sent data to Make.com webhook:", response.status);
+        console.log("✅ [SPREADSHEET STORAGE] Successfully stored call data in spreadsheet!");
+        console.log("✅ Successfully sent data to Make.com webhook:", {
+            status: response.status,
+            statusText: response.statusText,
+            call_id: spreadsheetData.call_id,
+        });
     } catch (error) {
         // Log error but don't throw - we don't want to break the webhook handler
+        console.error("❌ [SPREADSHEET STORAGE] FAILED - Error storing call data in spreadsheet");
         if (axios.isAxiosError(error)) {
             console.error("❌ Error sending data to Make.com webhook:", {
                 message: error.message,
                 status: error.response?.status,
                 statusText: error.response?.statusText,
                 data: error.response?.data,
+                call_id: callData.call_id,
             });
         } else {
-            console.error("❌ Error sending data to Make.com webhook:", error);
+            console.error("❌ Error sending data to Make.com webhook:", {
+                error: error,
+                call_id: callData.call_id,
+            });
         }
     }
 };
