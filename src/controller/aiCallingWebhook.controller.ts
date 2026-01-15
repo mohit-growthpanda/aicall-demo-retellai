@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import aw from "../middlewares/asyncWrapper.middleware";
 import { handleCallStatusUpdate, handleRealTimeVerification } from "../services/demoCall.service";
+import { sendToMakeWebhook } from "../services/makeWebhook.service";
 
 /**
  * @desc Webhook to receive Retell AI call results
@@ -59,6 +60,23 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             // If call was hung up, still return OK but log it
             if (wasHungUp) {
                 console.log("✅ Call hung up due to verification failure");
+                
+                // Send data to Make.com webhook even for hung up calls
+                await sendToMakeWebhook({
+                    call_id: callId,
+                    event: event,
+                    call_status: data.call_status || "hung_up",
+                    from_number: data.from_number,
+                    to_number: data.to_number,
+                    duration_ms: data.duration_ms,
+                    transcript: data.transcript,
+                    metadata: data.metadata,
+                    conversation_state: data.conversation_state,
+                    verification_status: false,
+                    verified: false,
+                    timestamp: new Date().toISOString(),
+                });
+                
                 res.status(200).json({ msg: "OK", action: "call_hung_up" });
                 return;
             }
@@ -71,6 +89,25 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
                 call_status: data.call_status,
                 transcript: data.transcript,
                 call_analysis: data.call_analysis,
+            });
+
+            // Send data to Make.com webhook for spreadsheet storage
+            await sendToMakeWebhook({
+                call_id: callId,
+                event: event,
+                call_status: data.call_status,
+                from_number: data.from_number,
+                to_number: data.to_number,
+                duration_ms: data.duration_ms,
+                transcript: data.transcript,
+                call_analysis: data.call_analysis,
+                metadata: data.metadata,
+                conversation_state: data.conversation_state,
+                verification_status: data.call_analysis?.verification_status || 
+                                   data.call_analysis?.verified,
+                verified: data.call_analysis?.verified || 
+                         data.call_analysis?.verification_status === "verified",
+                timestamp: new Date().toISOString(),
             });
         }
 
