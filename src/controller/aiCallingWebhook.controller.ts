@@ -23,12 +23,14 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
         console.log("📋 Webhook data:", JSON.stringify({
             event,
             call_id: callId,
+            call_status: data.call_status,
             has_transcript: !!data.transcript,
             transcript_length: data.transcript?.length || 0,
             has_conversation_state: !!data.conversation_state,
             has_function_call: !!data.function_call,
             has_metadata: !!data.metadata,
             has_dynamic_vars: !!data.retell_llm_dynamic_variables,
+            has_call_analysis: !!data.call_analysis,
         }, null, 2));
 
         // Handle real-time verification during the call
@@ -83,7 +85,15 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
         }
 
         // Handle call status updates for verification
-        if (event === "call_ended" || event === "call_analysis") {
+        // Check for call completion events - Retell may use different event names
+        const isCallComplete = event === "call_ended" || 
+                              event === "call_analysis" ||
+                              event === "ended" ||
+                              (data.call_status && (data.call_status === "ended" || data.call_status === "completed"));
+
+        if (isCallComplete) {
+            console.log("✅ Call completed - processing final data for Make.com");
+            
             await handleCallStatusUpdate({
                 call_id: callId,
                 call_status: data.call_status,
@@ -109,6 +119,32 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
                          data.call_analysis?.verification_status === "verified",
                 timestamp: new Date().toISOString(),
             });
+        } else {
+            // Log events that don't trigger Make.com storage for debugging
+            console.log("ℹ️ Event received but not a completion event:", event, "Call status:", data.call_status);
+            
+            // Fallback: If we have complete call data (duration and status), send it anyway
+            // This catches cases where Retell uses different event names
+            if (data.duration_ms && data.call_status && (data.call_status === "ended" || data.call_status === "completed")) {
+                console.log("⚠️ Fallback: Sending data to Make.com even though event is not 'call_ended'");
+                await sendToMakeWebhook({
+                    call_id: callId,
+                    event: event,
+                    call_status: data.call_status,
+                    from_number: data.from_number,
+                    to_number: data.to_number,
+                    duration_ms: data.duration_ms,
+                    transcript: data.transcript,
+                    call_analysis: data.call_analysis,
+                    metadata: data.metadata,
+                    conversation_state: data.conversation_state,
+                    verification_status: data.call_analysis?.verification_status || 
+                                       data.call_analysis?.verified,
+                    verified: data.call_analysis?.verified || 
+                             data.call_analysis?.verification_status === "verified",
+                    timestamp: new Date().toISOString(),
+                });
+            }
         }
 
         // Log call details
