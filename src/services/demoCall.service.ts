@@ -11,9 +11,23 @@ export const triggerVerificationCall = async (
     name: string,
     phone: string
 ): Promise<VerificationCallResult> => {
+    console.log("🔧 [triggerVerificationCall] Starting verification call setup");
+    console.log("🔧 [triggerVerificationCall] Input parameters:", { name, phone });
+
+    // Check spreadsheet storage configuration
+    const makeHookUrl = process.env.MAKE_HOOK_URL;
+    console.log("📊 [triggerVerificationCall] Spreadsheet storage check:");
+    if (makeHookUrl) {
+        console.log("   ✅ MAKE_HOOK_URL is configured - Data will be stored in spreadsheet");
+    } else {
+        console.log("   ⚠️ MAKE_HOOK_URL is NOT configured - Data will NOT be stored in spreadsheet");
+    }
+
     if (!process.env.RETELL_API_KEY) {
+        console.error("❌ [triggerVerificationCall] RETELL_API_KEY is not configured");
         throw new Error("RETELL_API_KEY is not configured");
     }
+    console.log("✅ [triggerVerificationCall] RETELL_API_KEY is configured");
 
     // Normalize phone number
     const normalizePhone = (num: string): string => {
@@ -32,15 +46,26 @@ export const triggerVerificationCall = async (
         return cleaned;
     };
 
+    console.log("📞 [triggerVerificationCall] Normalizing phone number:", phone);
     const normalizedPhone = normalizePhone(phone);
+    console.log("📞 [triggerVerificationCall] Normalized phone:", normalizedPhone);
 
     const agentId = process.env.RETELL_AGENT_ID;
 
     if (!agentId) {
+        console.error("❌ [triggerVerificationCall] RETELL_AGENT_ID is not configured");
         throw new Error("RETELL_AGENT_ID is not configured");
     }
+    console.log("✅ [triggerVerificationCall] RETELL_AGENT_ID is configured:", agentId);
 
     try {
+        console.log("🚀 [triggerVerificationCall] Creating Retell call with parameters:", {
+            agent_id: agentId,
+            to_number: normalizedPhone,
+            from_number: process.env.RETELL_FROM_NUMBER || "not set",
+            metadata: { name, phone: normalizedPhone, verificationRequired: true },
+        });
+
         // Create call with Retell SDK
         const call = await retell.call.create({
             agent_id: agentId,
@@ -63,9 +88,10 @@ export const triggerVerificationCall = async (
             },
         });
 
-        console.log("✅ Call created:", call.call_id);
-        console.log("📞 Calling:", normalizedPhone);
-        console.log("👤 Verifying name:", name);
+        console.log("✅ [triggerVerificationCall] Call created successfully:", call.call_id);
+        console.log("📞 [triggerVerificationCall] Calling:", normalizedPhone);
+        console.log("👤 [triggerVerificationCall] Verifying name:", name);
+        console.log("📊 [triggerVerificationCall] Spreadsheet storage status:", makeHookUrl ? "ENABLED - Will store when call completes" : "DISABLED - Will NOT store");
 
         return {
             callId: call.call_id as string,
@@ -73,30 +99,48 @@ export const triggerVerificationCall = async (
             phone: normalizedPhone,
         };
     } catch (error) {
-        console.error("❌ Error creating Retell call:", error);
+        console.error("❌ [triggerVerificationCall] Error creating Retell call:", error);
+        console.error("❌ [triggerVerificationCall] Error details:", {
+            errorType: error instanceof Error ? error.constructor.name : typeof error,
+            message: error instanceof Error ? error.message : String(error),
+            isAxiosError: axios.isAxiosError(error),
+        });
         
         // If it's already a formatted error message, re-throw it
         if (error instanceof Error && (error.message.includes('Network error') || error.message.includes('SOLUTION:'))) {
+            console.error("❌ [triggerVerificationCall] Re-throwing formatted error");
             throw error;
         }
         
         if (axios.isAxiosError(error)) {
+            console.error("❌ [triggerVerificationCall] Axios error details:", {
+                code: error.code,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+            });
             // Check for network errors
             if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-                throw new Error(
+                const networkError = new Error(
                     `Network error: Cannot connect to Retell API. ${error.message}\n` +
                     `Please check your internet connection and try again.`
                 );
+                console.error("❌ [triggerVerificationCall] Network error detected");
+                throw networkError;
             }
-            throw new Error(
+            const apiError = new Error(
                 `Retell API error: ${error.response?.data?.message || error.message}`
             );
+            console.error("❌ [triggerVerificationCall] Retell API error");
+            throw apiError;
         }
         
         // Re-throw as Error if it's not already
         if (error instanceof Error) {
+            console.error("❌ [triggerVerificationCall] Re-throwing Error instance");
             throw error;
         }
+        console.error("❌ [triggerVerificationCall] Unknown error type, converting to Error");
         throw new Error(`Unknown error: ${String(error)}`);
     }
 };
