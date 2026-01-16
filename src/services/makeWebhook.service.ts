@@ -1,5 +1,16 @@
 import axios from "axios";
 
+interface CallAnalysis {
+    call_summary?: string;
+    call_successful?: boolean;
+    custom_data?: Record<string, unknown>;
+    custom_call_data?: Record<string, unknown>;
+    post_call_data?: Record<string, unknown>;
+    data_extraction?: Record<string, unknown>;
+    extracted_data?: Record<string, unknown>;
+    [key: string]: unknown;
+}
+
 interface CallData {
     call_id: string;
     event?: string;
@@ -8,13 +19,52 @@ interface CallData {
     to_number?: string;
     duration_ms?: number;
     transcript?: string;
-    call_analysis?: Record<string, unknown>;
+    call_analysis?: CallAnalysis;
     metadata?: Record<string, unknown>;
     conversation_state?: Record<string, unknown>;
     verification_status?: string | boolean;
     verified?: boolean;
     timestamp?: string;
 }
+
+const toSheetKey = (key: string): string => {
+    return key
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+};
+
+const flattenObject = (
+    obj: Record<string, unknown>,
+    prefix: string
+): Record<string, string | number | boolean> => {
+    const result: Record<string, string | number | boolean> = {};
+
+    const walk = (value: unknown, path: string[]) => {
+        if (value === null || value === undefined) {
+            return;
+        }
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+            const key = toSheetKey([prefix, ...path].join("_"));
+            result[key] = value;
+            return;
+        }
+        if (Array.isArray(value)) {
+            const key = toSheetKey([prefix, ...path].join("_"));
+            result[key] = value.join(", ");
+            return;
+        }
+        if (typeof value === "object") {
+            Object.entries(value as Record<string, unknown>).forEach(([childKey, childValue]) => {
+                walk(childValue, [...path, childKey]);
+            });
+        }
+    };
+
+    walk(obj, []);
+    return result;
+};
 
 /**
  * Send call data to Make.com webhook for spreadsheet storage
@@ -30,49 +80,38 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
     }
 
     try {
-        // Normalize verification_status to always be a string for Make.com/spreadsheet compatibility
-        let verificationStatus: string = "unknown";
-        if (callData.verification_status !== undefined) {
-            verificationStatus = typeof callData.verification_status === "boolean" 
-                ? (callData.verification_status ? "verified" : "not_verified")
-                : String(callData.verification_status);
-        } else if (callData.call_analysis?.verification_status !== undefined) {
-            const status = callData.call_analysis.verification_status;
-            verificationStatus = typeof status === "boolean" 
-                ? (status ? "verified" : "not_verified")
-                : String(status);
-        } else if (callData.call_analysis?.verified !== undefined) {
-            verificationStatus = callData.call_analysis.verified ? "verified" : "not_verified";
-        }
+        const extractionSource =
+            (callData.call_analysis?.custom_data as Record<string, unknown> | undefined) ??
+            (callData.call_analysis?.custom_call_data as Record<string, unknown> | undefined) ??
+            (callData.call_analysis?.post_call_data as Record<string, unknown> | undefined) ??
+            (callData.call_analysis?.data_extraction as Record<string, unknown> | undefined) ??
+            (callData.call_analysis?.extracted_data as Record<string, unknown> | undefined) ??
+            undefined;
 
-        // Prepare data for spreadsheet - all fields properly typed for Make.com
+        const extractedFields =
+            extractionSource && typeof extractionSource === "object"
+                ? flattenObject(extractionSource, "extracted")
+                : {};
+
+        // Prepare data for spreadsheet - required fields + post-call extraction
         const spreadsheetData = {
-            call_id: String(callData.call_id),
-            event: String(callData.event || "unknown"),
-            call_status: String(callData.call_status || "unknown"),
-            from_number: String(callData.from_number || ""),
             to_number: String(callData.to_number || ""),
-            duration_ms: Number(callData.duration_ms || 0),
             duration_seconds: callData.duration_ms ? Math.round(callData.duration_ms / 1000) : 0,
-            transcript: String(callData.transcript || ""),
-            transcript_length: Number(callData.transcript?.length || 0),
-            verification_status: verificationStatus,
-            verified: Boolean(callData.verified || 
-                     callData.call_analysis?.verified || 
-                     callData.call_analysis?.verification_status === "verified" || 
-                     false),
             name: String(callData.metadata?.name || ""),
             phone: String(callData.metadata?.phone || ""),
-            timestamp: String(callData.timestamp || new Date().toISOString()),
-            // Include analysis summary if available
-            analysis_summary: callData.call_analysis ? JSON.stringify(callData.call_analysis) : "",
+            call_summary: String((callData.call_analysis as Record<string, unknown> | undefined)?.call_summary || ""),
+            call_successful: Boolean((callData.call_analysis as Record<string, unknown> | undefined)?.call_successful || false),
+            extracted_data_json: JSON.stringify(extractionSource || {}),
+            ...extractedFields,
         };
 
         console.log("📊 [SPREADSHEET STORAGE] Attempting to store call data in spreadsheet...");
         console.log("📤 Sending data to Make.com webhook:", {
-            call_id: spreadsheetData.call_id,
-            event: spreadsheetData.event,
-            status: spreadsheetData.call_status,
+            to_number: spreadsheetData.to_number,
+            duration_seconds: spreadsheetData.duration_seconds,
+            name: spreadsheetData.name,
+            phone: spreadsheetData.phone,
+            extracted_fields_count: Object.keys(extractedFields).length,
             webhook_url: makeHookUrl.substring(0, 50) + "...", // Log partial URL for debugging
         });
         console.log("📦 Full payload being sent:", JSON.stringify(spreadsheetData, null, 2));
@@ -88,7 +127,6 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
         console.log("✅ Successfully sent data to Make.com webhook:", {
             status: response.status,
             statusText: response.statusText,
-            call_id: spreadsheetData.call_id,
         });
     } catch (error) {
         // Log error but don't throw - we don't want to break the webhook handler
