@@ -107,6 +107,7 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
 
         console.log("📊 [SPREADSHEET STORAGE] Attempting to store call data in spreadsheet...");
         console.log("📤 Sending data to Make.com webhook:", {
+            call_id: callData.call_id,
             to_number: spreadsheetData.to_number,
             duration_seconds: spreadsheetData.duration_seconds,
             name: spreadsheetData.name,
@@ -114,7 +115,10 @@ export const sendToMakeWebhook = async (callData: CallData): Promise<void> => {
             extracted_fields_count: Object.keys(extractedFields).length,
             webhook_url: makeHookUrl.substring(0, 50) + "...", // Log partial URL for debugging
         });
-        console.log("📦 Full payload being sent:", JSON.stringify(spreadsheetData, null, 2));
+        console.log(
+            "📦 [SPREADSHEET STORAGE] Full payload being sent:",
+            JSON.stringify({ call_id: callData.call_id, ...spreadsheetData }, null, 2)
+        );
 
         const response = await axios.post(makeHookUrl, spreadsheetData, {
             headers: {

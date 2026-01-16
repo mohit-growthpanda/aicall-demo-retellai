@@ -33,6 +33,8 @@ export const triggerDemoCall = aw(async (req: Request, res: Response) => {
     try {
         // Check if spreadsheet storage is configured
         const makeHookUrl = process.env.MAKE_HOOK_URL;
+        const spreadsheetStatus = makeHookUrl ? "ENABLED" : "DISABLED";
+        console.log(`📊 [SPREADSHEET STORAGE] Status: ${spreadsheetStatus}`);
         if (makeHookUrl) {
             console.log("📊 Spreadsheet storage: ENABLED - Data will be stored in spreadsheet when call completes");
             console.log("🔗 Make.com webhook URL configured:", makeHookUrl.substring(0, 50) + "...");
@@ -40,6 +42,8 @@ export const triggerDemoCall = aw(async (req: Request, res: Response) => {
             console.log("⚠️ Spreadsheet storage: DISABLED - MAKE_HOOK_URL not configured");
             console.log("⚠️ Call data will NOT be stored in spreadsheet");
         }
+        console.log("🧾 [SPREADSHEET STORAGE] Capture happens on the Retell webhook.");
+        console.log("🧾 [SPREADSHEET STORAGE] Look for logs tagged [SPREADSHEET STORAGE] when the call completes.");
 
         console.log("🚀 Triggering verification call:", { name, phone });
         const result = await triggerVerificationCall(name, phone);
@@ -53,6 +57,7 @@ export const triggerDemoCall = aw(async (req: Request, res: Response) => {
 
         if (makeHookUrl) {
             console.log("📋 Note: Call data will be automatically stored in spreadsheet when call completes via webhook");
+            console.log("📋 [SPREADSHEET STORAGE] Waiting for webhook to confirm capture.");
         }
 
         successResponse(res, {
