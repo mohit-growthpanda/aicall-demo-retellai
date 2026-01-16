@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import aw from "../middlewares/asyncWrapper.middleware";
 import { handleCallStatusUpdate, handleRealTimeVerification } from "../services/demoCall.service";
 import { sendToMakeWebhook } from "../services/makeWebhook.service";
+import { normalizeRetellCallData } from "../services/retellNormalizer";
 
 /**
  * @desc Webhook to receive Retell AI call results
@@ -39,16 +40,6 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
         const metadata =
             data?.metadata ||
             payload?.metadata;
-        const conversationState =
-            data?.conversation_state ||
-            payload?.conversation_state;
-        const functionCall =
-            data?.function_call ||
-            payload?.function_call;
-        const dynamicVars =
-            data?.retell_llm_dynamic_variables ||
-            payload?.retell_llm_dynamic_variables;
-
         if (process.env.DEBUG_WEBHOOK === "1") {
             console.log("🧾 Retell webhook raw payload:", JSON.stringify(payload, null, 2));
         }
@@ -65,10 +56,7 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             call_status: callStatus,
             has_transcript: !!transcript,
             transcript_length: transcript?.length || 0,
-            has_conversation_state: !!conversationState,
-            has_function_call: !!functionCall,
             has_metadata: !!metadata,
-            has_dynamic_vars: !!dynamicVars,
             has_call_analysis: !!callAnalysis,
         }, null, 2));
 
@@ -92,10 +80,10 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             const wasHungUp = await handleRealTimeVerification({
                 call_id: callId,
                 transcript: transcript,
-                conversation_state: conversationState,
-                function_call: functionCall,
+                conversation_state: data?.conversation_state || payload?.conversation_state,
+                function_call: data?.function_call || payload?.function_call,
                 metadata: metadata,
-                retell_llm_dynamic_variables: dynamicVars,
+                retell_llm_dynamic_variables: data?.retell_llm_dynamic_variables || payload?.retell_llm_dynamic_variables,
             });
             
             // If call was hung up, still return OK but log it
@@ -103,20 +91,19 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
                 console.log("✅ Call hung up due to verification failure");
                 
                 // Send data to Make.com webhook even for hung up calls
-                await sendToMakeWebhook({
-                    call_id: callId,
-                    event: event,
-                    call_status: callStatus || "hung_up",
-                    from_number: data.from_number || payload?.from_number,
-                    to_number: data.to_number || payload?.to_number,
-                    duration_ms: data.duration_ms || payload?.duration_ms,
-                    transcript: transcript,
+                const normalizedPayload = normalizeRetellCallData({
+                    callId,
+                    callStatus: "hung_up",
+                    callAnalysis: callAnalysis,
                     metadata: metadata,
-                    conversation_state: conversationState,
-                    verification_status: false,
-                    verified: false,
-                    timestamp: new Date().toISOString(),
+                    durationMs: data.duration_ms || payload?.duration_ms,
+                    fromNumber: data.from_number || payload?.from_number,
+                    toNumber: data.to_number || payload?.to_number,
                 });
+                
+                normalizedPayload.verified = false;
+                
+                await sendToMakeWebhook(normalizedPayload);
                 
                 res.status(200).json({ msg: "OK", action: "call_hung_up" });
                 return;
@@ -131,7 +118,7 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
                               (callStatus && (callStatus === "ended" || callStatus === "completed"));
 
         if (isCallComplete) {
-            console.log("✅ Call completed - processing final data for Make.com");
+            console.log("✅ Call completed - normalizing data for Make.com");
             
             await handleCallStatusUpdate({
                 call_id: callId,
@@ -140,24 +127,18 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
                 call_analysis: callAnalysis,
             });
 
-            // Send data to Make.com webhook for spreadsheet storage
-            await sendToMakeWebhook({
-                call_id: callId,
-                event: event,
-                call_status: callStatus,
-                from_number: data.from_number || payload?.from_number,
-                to_number: data.to_number || payload?.to_number,
-                duration_ms: data.duration_ms || payload?.duration_ms,
-                transcript: transcript,
-                call_analysis: callAnalysis,
+            // Normalize and send data to Make.com webhook for spreadsheet storage
+            const normalizedPayload = normalizeRetellCallData({
+                callId,
+                callStatus: callStatus,
+                callAnalysis: callAnalysis,
                 metadata: metadata,
-                conversation_state: conversationState,
-                verification_status: callAnalysis?.verification_status || 
-                                   callAnalysis?.verified,
-                verified: callAnalysis?.verified || 
-                         callAnalysis?.verification_status === "verified",
-                timestamp: new Date().toISOString(),
+                durationMs: data.duration_ms || payload?.duration_ms,
+                fromNumber: data.from_number || payload?.from_number,
+                toNumber: data.to_number || payload?.to_number,
             });
+
+            await sendToMakeWebhook(normalizedPayload);
         } else {
             // Log events that don't trigger Make.com storage for debugging
             console.log("ℹ️ Event received but not a completion event:", event, "Call status:", callStatus);
@@ -166,23 +147,18 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             // This catches cases where Retell uses different event names
             if ((data.duration_ms || payload?.duration_ms) && callStatus && (callStatus === "ended" || callStatus === "completed")) {
                 console.log("⚠️ Fallback: Sending data to Make.com even though event is not 'call_ended'");
-                await sendToMakeWebhook({
-                    call_id: callId,
-                    event: event,
-                    call_status: callStatus,
-                    from_number: data.from_number || payload?.from_number,
-                    to_number: data.to_number || payload?.to_number,
-                    duration_ms: data.duration_ms || payload?.duration_ms,
-                    transcript: transcript,
-                    call_analysis: callAnalysis,
+                
+                const normalizedPayload = normalizeRetellCallData({
+                    callId,
+                    callStatus: callStatus,
+                    callAnalysis: callAnalysis,
                     metadata: metadata,
-                    conversation_state: conversationState,
-                    verification_status: callAnalysis?.verification_status || 
-                                       callAnalysis?.verified,
-                    verified: callAnalysis?.verified || 
-                             callAnalysis?.verification_status === "verified",
-                    timestamp: new Date().toISOString(),
+                    durationMs: data.duration_ms || payload?.duration_ms,
+                    fromNumber: data.from_number || payload?.from_number,
+                    toNumber: data.to_number || payload?.to_number,
                 });
+
+                await sendToMakeWebhook(normalizedPayload);
             }
         }
 
