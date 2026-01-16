@@ -9,28 +9,67 @@ import { sendToMakeWebhook } from "../services/makeWebhook.service";
  */
 export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
     try {
-        const event = req.body?.event;
-        const data = req.body?.data;
+        const payload = req.body || {};
+        const data =
+            payload?.data ||
+            payload?.call ||
+            payload;
+        const event =
+            payload?.event ||
+            payload?.type ||
+            payload?.status ||
+            data?.event ||
+            data?.type ||
+            data?.status;
+        const callStatus =
+            data?.call_status ||
+            data?.status ||
+            payload?.call_status ||
+            payload?.status;
+        const callId =
+            data?.call_id ||
+            payload?.call_id;
+        const transcript =
+            data?.transcript ||
+            payload?.transcript;
+        const callAnalysis =
+            data?.call_analysis ||
+            payload?.call_analysis ||
+            payload?.analysis;
+        const metadata =
+            data?.metadata ||
+            payload?.metadata;
+        const conversationState =
+            data?.conversation_state ||
+            payload?.conversation_state;
+        const functionCall =
+            data?.function_call ||
+            payload?.function_call;
+        const dynamicVars =
+            data?.retell_llm_dynamic_variables ||
+            payload?.retell_llm_dynamic_variables;
 
-        if (!event || !data?.call_id) {
+        if (process.env.DEBUG_WEBHOOK === "1") {
+            console.log("🧾 Retell webhook raw payload:", JSON.stringify(payload, null, 2));
+        }
+
+        if (!callId) {
             res.status(400).json({ message: "Invalid webhook payload" });
             return;
         }
 
-        const callId = data.call_id;
-
-        console.log("📞 Retell webhook received:", event, callId);
+        console.log("📞 Retell webhook received:", event || "unknown_event", callId);
         console.log("📋 Webhook data:", JSON.stringify({
-            event,
+            event: event || "unknown_event",
             call_id: callId,
-            call_status: data.call_status,
-            has_transcript: !!data.transcript,
-            transcript_length: data.transcript?.length || 0,
-            has_conversation_state: !!data.conversation_state,
-            has_function_call: !!data.function_call,
-            has_metadata: !!data.metadata,
-            has_dynamic_vars: !!data.retell_llm_dynamic_variables,
-            has_call_analysis: !!data.call_analysis,
+            call_status: callStatus,
+            has_transcript: !!transcript,
+            transcript_length: transcript?.length || 0,
+            has_conversation_state: !!conversationState,
+            has_function_call: !!functionCall,
+            has_metadata: !!metadata,
+            has_dynamic_vars: !!dynamicVars,
+            has_call_analysis: !!callAnalysis,
         }, null, 2));
 
         // Handle real-time verification during the call
@@ -43,20 +82,20 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
             event === "status_update") {
             
             // Log transcript snippet for debugging
-            if (data.transcript) {
-                const recentTranscript = data.transcript.length > 200 
-                    ? data.transcript.substring(data.transcript.length - 200)
-                    : data.transcript;
+            if (transcript) {
+                const recentTranscript = transcript.length > 200 
+                    ? transcript.substring(transcript.length - 200)
+                    : transcript;
                 console.log("💬 Recent transcript:", recentTranscript);
             }
             
             const wasHungUp = await handleRealTimeVerification({
                 call_id: callId,
-                transcript: data.transcript,
-                conversation_state: data.conversation_state,
-                function_call: data.function_call,
-                metadata: data.metadata,
-                retell_llm_dynamic_variables: data.retell_llm_dynamic_variables,
+                transcript: transcript,
+                conversation_state: conversationState,
+                function_call: functionCall,
+                metadata: metadata,
+                retell_llm_dynamic_variables: dynamicVars,
             });
             
             // If call was hung up, still return OK but log it
@@ -67,13 +106,13 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
                 await sendToMakeWebhook({
                     call_id: callId,
                     event: event,
-                    call_status: data.call_status || "hung_up",
-                    from_number: data.from_number,
-                    to_number: data.to_number,
-                    duration_ms: data.duration_ms,
-                    transcript: data.transcript,
-                    metadata: data.metadata,
-                    conversation_state: data.conversation_state,
+                    call_status: callStatus || "hung_up",
+                    from_number: data.from_number || payload?.from_number,
+                    to_number: data.to_number || payload?.to_number,
+                    duration_ms: data.duration_ms || payload?.duration_ms,
+                    transcript: transcript,
+                    metadata: metadata,
+                    conversation_state: conversationState,
                     verification_status: false,
                     verified: false,
                     timestamp: new Date().toISOString(),
@@ -89,59 +128,59 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
         const isCallComplete = event === "call_ended" || 
                               event === "call_analysis" ||
                               event === "ended" ||
-                              (data.call_status && (data.call_status === "ended" || data.call_status === "completed"));
+                              (callStatus && (callStatus === "ended" || callStatus === "completed"));
 
         if (isCallComplete) {
             console.log("✅ Call completed - processing final data for Make.com");
             
             await handleCallStatusUpdate({
                 call_id: callId,
-                call_status: data.call_status,
-                transcript: data.transcript,
-                call_analysis: data.call_analysis,
+                call_status: callStatus,
+                transcript: transcript,
+                call_analysis: callAnalysis,
             });
 
             // Send data to Make.com webhook for spreadsheet storage
             await sendToMakeWebhook({
                 call_id: callId,
                 event: event,
-                call_status: data.call_status,
-                from_number: data.from_number,
-                to_number: data.to_number,
-                duration_ms: data.duration_ms,
-                transcript: data.transcript,
-                call_analysis: data.call_analysis,
-                metadata: data.metadata,
-                conversation_state: data.conversation_state,
-                verification_status: data.call_analysis?.verification_status || 
-                                   data.call_analysis?.verified,
-                verified: data.call_analysis?.verified || 
-                         data.call_analysis?.verification_status === "verified",
+                call_status: callStatus,
+                from_number: data.from_number || payload?.from_number,
+                to_number: data.to_number || payload?.to_number,
+                duration_ms: data.duration_ms || payload?.duration_ms,
+                transcript: transcript,
+                call_analysis: callAnalysis,
+                metadata: metadata,
+                conversation_state: conversationState,
+                verification_status: callAnalysis?.verification_status || 
+                                   callAnalysis?.verified,
+                verified: callAnalysis?.verified || 
+                         callAnalysis?.verification_status === "verified",
                 timestamp: new Date().toISOString(),
             });
         } else {
             // Log events that don't trigger Make.com storage for debugging
-            console.log("ℹ️ Event received but not a completion event:", event, "Call status:", data.call_status);
+            console.log("ℹ️ Event received but not a completion event:", event, "Call status:", callStatus);
             
             // Fallback: If we have complete call data (duration and status), send it anyway
             // This catches cases where Retell uses different event names
-            if (data.duration_ms && data.call_status && (data.call_status === "ended" || data.call_status === "completed")) {
+            if ((data.duration_ms || payload?.duration_ms) && callStatus && (callStatus === "ended" || callStatus === "completed")) {
                 console.log("⚠️ Fallback: Sending data to Make.com even though event is not 'call_ended'");
                 await sendToMakeWebhook({
                     call_id: callId,
                     event: event,
-                    call_status: data.call_status,
-                    from_number: data.from_number,
-                    to_number: data.to_number,
-                    duration_ms: data.duration_ms,
-                    transcript: data.transcript,
-                    call_analysis: data.call_analysis,
-                    metadata: data.metadata,
-                    conversation_state: data.conversation_state,
-                    verification_status: data.call_analysis?.verification_status || 
-                                       data.call_analysis?.verified,
-                    verified: data.call_analysis?.verified || 
-                             data.call_analysis?.verification_status === "verified",
+                    call_status: callStatus,
+                    from_number: data.from_number || payload?.from_number,
+                    to_number: data.to_number || payload?.to_number,
+                    duration_ms: data.duration_ms || payload?.duration_ms,
+                    transcript: transcript,
+                    call_analysis: callAnalysis,
+                    metadata: metadata,
+                    conversation_state: conversationState,
+                    verification_status: callAnalysis?.verification_status || 
+                                       callAnalysis?.verified,
+                    verified: callAnalysis?.verified || 
+                             callAnalysis?.verification_status === "verified",
                     timestamp: new Date().toISOString(),
                 });
             }
@@ -149,11 +188,11 @@ export const handleRetellWebhook = aw(async (req: Request, res: Response) => {
 
         // Log call details
         console.log("📊 Call Details:", {
-            status: data.call_status,
-            from: data.from_number,
-            to: data.to_number,
-            duration: data.duration_ms,
-            transcript: data.transcript?.substring(0, 100) + "...",
+            status: callStatus,
+            from: data.from_number || payload?.from_number,
+            to: data.to_number || payload?.to_number,
+            duration: data.duration_ms || payload?.duration_ms,
+            transcript: transcript ? transcript.substring(0, 100) + "..." : undefined,
         });
 
         res.status(200).json({ msg: "OK" });
